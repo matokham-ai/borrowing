@@ -1100,13 +1100,24 @@ class LoanApplicationController extends Controller
             }
 
             $existingLoan->update(['status' => 'disbursement_pending']);
-            ProcessLoanDisbursement::dispatch($existingLoan->id, (int) $existingLoan->organisation_id);
+            try {
+                ProcessLoanDisbursement::dispatchSync($existingLoan->id, (int) $existingLoan->organisation_id);
+            } catch (\RuntimeException $e) {
+                Log::error('Loan disbursement retry could not be submitted', [
+                    'loan_id' => $existingLoan->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return back()->withErrors([
+                    'application' => 'The loan retry could not be submitted to M-Pesa. Check the transaction status before trying again.',
+                ]);
+            }
 
             Auditor::log('loan.disbursement_retried', $existingLoan, [
                 'new' => ['status' => 'disbursement_pending', 'application_id' => $application->id],
             ]);
 
-            return back()->with('success', "Loan #{$existingLoan->id} M-Pesa disbursement retry queued.");
+            return back()->with('success', "Loan #{$existingLoan->id} disbursement request submitted to M-Pesa. Awaiting transfer confirmation.");
         }
 
         abort_unless($application->status === 'approved', 422, 'Only approved applications can be disbursed.');
@@ -1126,8 +1137,19 @@ class LoanApplicationController extends Controller
             return back()->withErrors(['application' => $e->getMessage()]);
         }
 
-        // Queue the B2C disbursement — loan activates asynchronously on callback
-        ProcessLoanDisbursement::dispatch($loan->id, (int) $loan->organisation_id);
+        // Submit the B2C request during this action; the result callback activates the loan.
+        try {
+            ProcessLoanDisbursement::dispatchSync($loan->id, (int) $loan->organisation_id);
+        } catch (\RuntimeException $e) {
+            Log::error('Loan disbursement could not be submitted', [
+                'loan_id' => $loan->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return back()->withErrors([
+                'application' => 'The loan was created, but its M-Pesa request could not be submitted. Check the transaction status before trying again.',
+            ]);
+        }
 
         Auditor::log('loan.disbursed', $loan, [
             'new' => ['status' => 'disbursement_pending', 'application_id' => $application->id],
@@ -1135,7 +1157,7 @@ class LoanApplicationController extends Controller
 
         return back()->with(
             'success',
-            "Loan #{$loan->id} created (ref: {$loan->repayment_reference}). Disbursement queued."
+            "Loan #{$loan->id} created (ref: {$loan->repayment_reference}). The disbursement request was submitted to M-Pesa; awaiting transfer confirmation."
         );
     }
 

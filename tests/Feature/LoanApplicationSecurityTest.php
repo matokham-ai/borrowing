@@ -12,7 +12,9 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
@@ -503,6 +505,107 @@ class LoanApplicationSecurityTest extends TestCase
             ->assertUnprocessable();
 
         $this->assertDatabaseMissing('loans', ['loan_application_id' => $application->id]);
+    }
+
+    public function test_disburse_action_submits_b2c_request_without_a_queue_worker(): void
+    {
+        [$originator, $organisation, $borrower, $product] = $this->makeLoanOfficerWithApplicationContext();
+        $adminRole = Role::create([
+            'organisation_id' => $organisation->id,
+            'name' => 'admin',
+            'display_name' => 'Admin',
+            'is_system' => true,
+            'is_active' => true,
+        ]);
+        $disbursePermission = Permission::firstOrCreate(
+            ['name' => 'loans.disburse'],
+            ['display_name' => 'Disburse approved loans', 'is_system' => true, 'is_active' => true]
+        );
+        $adminRole->permissions()->sync([$disbursePermission->id]);
+        $admin = User::create([
+            'organisation_id' => $organisation->id,
+            'name' => 'Disbursement Admin',
+            'email' => 'sync-disbursement-admin@example.test',
+            'password' => 'password',
+            'is_active' => true,
+        ]);
+        $admin->roles()->syncWithPivotValues([$adminRole->id], ['organisation_id' => $organisation->id]);
+        $firstApprover = User::create([
+            'organisation_id' => $organisation->id,
+            'name' => 'First Approver',
+            'email' => 'sync-first-approver@example.test',
+            'password' => 'password',
+            'is_active' => true,
+        ]);
+        Storage::fake('local');
+        $photo = UploadedFile::fake()->image('sync-guarantor.jpg')->store('security/sync', 'local');
+        $idFront = UploadedFile::fake()->image('sync-id-front.jpg')->store('security/sync', 'local');
+        $application = LoanApplication::withoutGlobalScopes()->create([
+            'organisation_id' => $organisation->id,
+            'branch_id' => $originator->branch_id,
+            'created_by' => $originator->id,
+            'first_level_approved_by' => $firstApprover->id,
+            'final_approved_by' => $admin->id,
+            'borrower_id' => $borrower->id,
+            'loan_product_id' => $product->id,
+            'requested_amount_cents' => 1000,
+            'requested_term_days' => 14,
+            'approved_amount_cents' => 1000,
+            'approved_term_days' => 14,
+            'status' => 'approved',
+            'decision' => 'approved',
+            'security_requirements_required' => true,
+            'security_data' => [
+                'guarantor' => [
+                    'name' => 'Test Guarantor',
+                    'national_id' => '12345678',
+                    'phone' => '0712345678',
+                    'relationship' => 'Sibling',
+                    'address' => 'Nairobi',
+                    'photo' => $photo,
+                    'id_front' => $idFront,
+                ],
+                'collateral' => [],
+            ],
+            'guarantor_consent_at' => now(),
+        ]);
+
+        Config::set('app.url', 'https://lendflow.example');
+        Config::set('services.mpesa.env', 'production');
+        Config::set('services.mpesa.b2c_consumer_key', 'b2c-key');
+        Config::set('services.mpesa.b2c_consumer_secret', 'b2c-secret');
+        Config::set('services.mpesa.b2c_shortcode', '3014281');
+        Config::set('services.mpesa.initiator_name', 'test-initiator');
+        Config::set('services.mpesa.security_credential', 'test-credential');
+        Config::set('services.mpesa.b2c_result_url', 'https://lendflow.example/api/pay/{orgSlug}/b2c/result');
+        Config::set('services.mpesa.b2c_timeout_url', 'https://lendflow.example/api/pay/{orgSlug}/b2c/timeout');
+        Http::fake([
+            'api.safaricom.co.ke/oauth/v1/generate*' => Http::response(['access_token' => 'access-token']),
+            'api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest' => Http::response([
+                'ResponseCode' => '0',
+                'ConversationID' => 'loan-disbursement-conversation',
+            ]),
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('applications.disburse', $application))
+            ->assertRedirect()
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success', fn (string $message) => str_contains($message, 'submitted to M-Pesa'));
+
+        Http::assertSent(fn ($request) => $request->url() === 'https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest'
+            && $request['Amount'] === 10
+            && $request['PartyB'] === '254712345678'
+            && $request['ResultURL'] === "https://lendflow.example/api/pay/{$organisation->slug}/b2c/result"
+        );
+        $this->assertDatabaseHas('loans', [
+            'loan_application_id' => $application->id,
+            'status' => 'disbursement_pending',
+        ]);
+        $this->assertDatabaseHas('mpesa_transaction_attempts', [
+            'response_code' => '200',
+            'status' => 'submitted',
+        ]);
     }
 
     public function test_duplicate_guarantor_check_returns_only_a_match_warning(): void
