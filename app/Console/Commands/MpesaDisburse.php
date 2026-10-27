@@ -166,7 +166,10 @@ class MpesaDisburse extends Command
         $this->line("  ConversationID        : {$conversationId}");
         $this->line("  OriginatorConversation: {$originator}");
         $this->line("  Status               : submitted (awaiting result callback)");
-        $this->line("  Callback URL         : " . rtrim((string) config('app.url'), '/') . '/api/mpesa/operations/' . $operation->callback_token . '/result');
+        $this->line('  Callback URL         : ' . route('mpesa.operations.callback', [
+            'operation' => $operation->callback_token,
+            'kind' => 'result',
+        ]));
         $this->newLine();
         $this->comment('Daraja will call the result/timeout URL when the payment settles.');
         $this->comment("Check the outcome: php artisan tinker --execute=\"App\\Models\\MpesaApiOperation::find({$operation->id})->status;\"");

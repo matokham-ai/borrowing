@@ -22,6 +22,9 @@ use App\Services\Payments\PaymentAllocationService;
 use App\Services\Payments\PaymentReversalService;
 use App\Services\Payments\PaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -670,6 +673,34 @@ class MpesaPaymentLifecycleTest extends TestCase
                  ->assertStatus(200)
                  ->assertJson(['ResultCode' => 0]);
         }
+    }
+
+    public function test_loan_disbursement_uses_registered_b2c_callback_routes(): void
+    {
+        Cache::flush();
+        Config::set('app.url', 'https://lendflow.example');
+        Config::set('services.mpesa.env', 'production');
+        Config::set('services.mpesa.b2c_consumer_key', 'b2c-key');
+        Config::set('services.mpesa.b2c_consumer_secret', 'b2c-secret');
+        Config::set('services.mpesa.b2c_shortcode', '3014281');
+        Config::set('services.mpesa.initiator_name', 'test-initiator');
+        Config::set('services.mpesa.security_credential', 'test-credential');
+        Http::fake([
+            'api.safaricom.co.ke/oauth/v1/generate*' => Http::response(['access_token' => 'access-token']),
+            'api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest' => Http::response([
+                'ResponseCode' => '0',
+                'ConversationID' => 'conversation-1',
+            ]),
+        ]);
+        $this->loan->update(['status' => 'disbursement_pending']);
+
+        app(\App\Services\Mpesa\MpesaDisbursementService::class)->disburse($this->loan->fresh());
+
+        Http::assertSent(fn ($request) => $request->url() === 'https://api.safaricom.co.ke/mpesa/b2c/v1/paymentrequest'
+            && $request['ResultURL'] === "https://lendflow.example/api/pay/{$this->org->slug}/b2c/result"
+            && $request['QueueTimeOutURL'] === "https://lendflow.example/api/pay/{$this->org->slug}/b2c/timeout"
+        );
+        $this->assertSame('disbursement_pending', $this->loan->fresh()->status);
     }
 
     // ═══════════════════════════════════════════════════════════════════════

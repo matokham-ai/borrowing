@@ -205,10 +205,10 @@ class MpesaDisbursementService
         $callbackUrls = [
             'result' => config('services.mpesa.b2c_result_url')
                 ? str_replace('{orgSlug}', $orgSlug, config('services.mpesa.b2c_result_url'))
-                : url("/api/mpesa/{$orgSlug}/b2c/result"),
+                : $this->organisationCallbackUrl('mpesa.b2c.result', $orgSlug),
             'timeout' => config('services.mpesa.b2c_timeout_url')
                 ? str_replace('{orgSlug}', $orgSlug, config('services.mpesa.b2c_timeout_url'))
-                : url("/api/mpesa/{$orgSlug}/b2c/timeout"),
+                : $this->organisationCallbackUrl('mpesa.b2c.timeout', $orgSlug),
         ];
 
         foreach ($callbackUrls as $type => $callbackUrl) {
@@ -313,10 +313,10 @@ class MpesaDisbursementService
 
         $b2cResultUrl  = config('services.mpesa.b2c_result_url')
             ? str_replace('{orgSlug}', $orgSlug, config('services.mpesa.b2c_result_url'))
-            : url("/api/mpesa/{$orgSlug}/b2c/result");
+            : $this->organisationCallbackUrl('mpesa.b2c.result', $orgSlug);
         $b2cTimeoutUrl = config('services.mpesa.b2c_timeout_url')
             ? str_replace('{orgSlug}', $orgSlug, config('services.mpesa.b2c_timeout_url'))
-            : url("/api/mpesa/{$orgSlug}/b2c/timeout");
+            : $this->organisationCallbackUrl('mpesa.b2c.timeout', $orgSlug);
 
         $requestPayload = [
             'InitiatorName'            => config('services.mpesa.initiator_name'),
@@ -491,5 +491,10 @@ class MpesaDisbursementService
         }
 
         return $digits;
+    }
+
+    private function organisationCallbackUrl(string $routeName, string $orgSlug): string
+    {
+        return rtrim(config('app.url'), '/').'/'.ltrim(route($routeName, ['orgSlug' => $orgSlug], false), '/');
     }
 }

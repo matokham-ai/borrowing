@@ -165,8 +165,8 @@ class MpesaDarajaOperationsTest extends TestCase
         ]);
 
         Http::assertSent(fn ($request) => $request->url() === 'https://api.safaricom.co.ke/mpesa/c2b/v2/registerurl'
-            && $request['ConfirmationURL'] === 'https://lendflow.example/api/mpesa/test-lender/c2b/confirmation'
-            && $request['ValidationURL'] === 'https://lendflow.example/api/mpesa/test-lender/c2b/validation'
+            && $request['ConfirmationURL'] === 'https://lendflow.example/api/pay/test-lender/c2b/confirmation'
+            && $request['ValidationURL'] === 'https://lendflow.example/api/pay/test-lender/c2b/validation'
         );
         $this->assertSame('completed', $operation->fresh()->status);
     }
@@ -223,7 +223,7 @@ class MpesaDarajaOperationsTest extends TestCase
             'request_payload' => ['Remarks' => 'Duplicate payment'],
         ]);
 
-        $response = $this->postJson('/api/mpesa/operations/'.$operation->callback_token.'/result', [
+        $response = $this->postJson('/api/pay/operations/'.$operation->callback_token.'/result', [
             'Result' => [
                 'ResultCode' => 0,
                 'ResultDesc' => 'Reversal successful',
@@ -261,7 +261,7 @@ class MpesaDarajaOperationsTest extends TestCase
             'request_payload' => ['Remarks' => 'Duplicate payment'],
         ]);
 
-        $response = $this->postJson('/api/mpesa/operations/'.$operation->callback_token.'/result', [
+        $response = $this->postJson('/api/pay/operations/'.$operation->callback_token.'/result', [
             'Result' => [
                 'ResultCode' => 1,
                 'ResultDesc' => 'Reversal rejected',
