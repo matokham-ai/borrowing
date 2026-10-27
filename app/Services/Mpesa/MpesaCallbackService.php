@@ -18,13 +18,13 @@ use Illuminate\Support\Str;
  *   2. Persist the raw payload to mpesa_webhook_events (idempotent write).
  *   3. Determine whether a matching mpesa_transaction already exists.
  *   4. Create/update mpesa_transaction with the normalised fields.
- *   5. Queue ProcessMpesaTransaction for background processing.
+ *   5. Process B2C results inline; queue other transaction processing.
  *   6. Return an HTTP-200-compatible ack payload.
  *
  * This class is intentionally thin — it does the minimum needed to:
  *   a) Guarantee we never lose a callback.
  *   b) Respond to Daraja within the required window (< 5 s).
- *   c) Hand off heavy work to a queued job.
+ *   c) Hand off non-B2C processing to a queued job.
  *
  * Supported callback types
  * ─────────────────────────
@@ -197,8 +197,14 @@ class MpesaCallbackService
                 'processing_status'    => 'queued',
             ]);
 
-            // ── 5. Queue background processing ───────────────────────────
-            ProcessMpesaTransaction::dispatch($mpesaTx->id, $organisationId);
+            // B2C results update loan activation and the disbursement receipt.
+            // Process these inline so callback handling does not depend on a worker.
+            if ($eventType === 'b2c_result') {
+                ProcessMpesaTransaction::dispatchSync($mpesaTx->id, $organisationId);
+                $webhookEvent->update(['processing_status' => 'processed']);
+            } else {
+                ProcessMpesaTransaction::dispatch($mpesaTx->id, $organisationId);
+            }
 
             return $this->ack();
         });

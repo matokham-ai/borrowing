@@ -21,8 +21,8 @@ use Illuminate\Support\Facades\Log;
 /**
  * ProcessMpesaTransaction
  *
- * The core background worker that orchestrates the full payment lifecycle
- * for a single MpesaTransaction after the callback has been ingested.
+ * Orchestrates the payment lifecycle for a single MpesaTransaction after its
+ * callback has been ingested. B2C results may run synchronously in the webhook.
  *
  * Inbound repayment flow (C2B / STK, direction = inbound):
  * ─────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ use Illuminate\Support\Facades\Log;
  * ──────────────
  *  Routed to ProcessMpesaReversal job.
  *
- * Uses the default queue consumed by the application's running workers.
+ * Inbound and reversal work uses the default queue consumed by application workers.
  * Retried 3 times (10 s / 60 s / 300 s backoff).
  */
 class ProcessMpesaTransaction implements ShouldQueue
@@ -199,6 +199,10 @@ class ProcessMpesaTransaction implements ShouldQueue
             );
         }
         // 'submitted' / 'processing' statuses are intermediate — wait for callback
+
+        if (in_array($tx->status, ['success', 'failed', 'timeout'], true)) {
+            $tx->update(['processed_at' => now()]);
+        }
     }
 
     public function failed(\Throwable $e): void

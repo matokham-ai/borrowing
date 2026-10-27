@@ -675,6 +675,48 @@ class MpesaPaymentLifecycleTest extends TestCase
         }
     }
 
+    public function test_b2c_result_callback_records_success_without_a_queue_worker(): void
+    {
+        $this->loan->update(['status' => 'disbursement_pending']);
+        $transaction = $this->makeMpesaTransaction([
+            'transaction_type' => 'b2c',
+            'direction' => 'outbound',
+            'status' => 'submitted',
+            'loan_id' => $this->loan->id,
+            'borrower_id' => $this->borrower->id,
+            'amount_cents' => 50000,
+            'originator_conversation_id' => 'originator-b2c-123',
+            'conversation_id' => 'conversation-b2c-123',
+        ]);
+
+        $response = $this->postJson("/api/pay/{$this->org->slug}/b2c/result", [
+            'Result' => [
+                'ResultCode' => 0,
+                'ResultDesc' => 'The service request is processed successfully.',
+                'OriginatorConversationID' => 'originator-b2c-123',
+                'ConversationID' => 'conversation-b2c-123',
+                'TransactionID' => 'B2CRECEIPT1',
+                'ResultParameters' => [
+                    'ResultParameter' => [
+                        ['Key' => 'TransactionAmount', 'Value' => 500],
+                        ['Key' => 'TransactionCompletedDateTime', 'Value' => now()->format('d.m.Y H:i:s')],
+                    ],
+                ],
+            ],
+        ]);
+
+        $response->assertOk()->assertJson(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
+        $this->assertSame('success', $transaction->fresh()->status);
+        $this->assertSame('B2CRECEIPT1', $transaction->fresh()->mpesa_receipt_number);
+        $this->assertNotNull($transaction->fresh()->processed_at);
+        $this->assertSame('active', $this->loan->fresh()->status);
+        $this->assertDatabaseHas('mpesa_webhook_events', [
+            'organisation_id' => $this->org->id,
+            'event_type' => 'b2c_result',
+            'processing_status' => 'processed',
+        ]);
+    }
+
     public function test_loan_disbursement_uses_registered_b2c_callback_routes(): void
     {
         Cache::flush();

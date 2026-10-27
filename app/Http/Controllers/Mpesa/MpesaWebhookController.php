@@ -12,17 +12,18 @@ use Illuminate\Support\Facades\Log;
 /**
  * MpesaWebhookController
  *
- * Receives inbound Daraja callbacks and dispatches them for background
- * processing.  The controller's only job is to:
+ * Receives inbound Daraja callbacks. Most callbacks are queued, while B2C
+ * results are processed inline so completed loan payouts are recorded without
+ * depending on a queue worker. The controller's only job is to:
  *
  *  1. Identify the organisation from the route slug.
  *  2. Parse + lightly validate the raw JSON body.
- *  3. Dispatch ProcessMpesaWebhook (queued).
+ *  3. Dispatch ProcessMpesaWebhook inline for B2C results, queued otherwise.
  *  4. Return HTTP 200 to Daraja within < 5 seconds.
  *
  * Routes are unauthenticated (Daraja cannot send session cookies).
  * Validation is limited to: valid JSON + known organisation slug.
- * All heavy processing and idempotency happen inside the job.
+ * Idempotency and callback processing happen in the service/job layer.
  *
  * URL structure:
  *   POST /api/pay/{orgSlug}/c2b/confirmation
@@ -148,13 +149,23 @@ class MpesaWebhookController extends Controller
             'ip'            => $request->ip(),
         ]);
 
-        // ── Queue for processing ──────────────────────────────────────────
-        ProcessMpesaWebhook::dispatch(
-            callbackType:   $callbackType,
-            payload:        $payload,
-            organisationId: (int) $organisation->id,
-            sourceIp:       $request->ip() ?? '',
-        );
+        // Process B2C results inline so a missing queue worker cannot leave
+        // a completed payout unrecorded.
+        if ($callbackType === 'b2c_result') {
+            ProcessMpesaWebhook::dispatchSync(
+                callbackType:   $callbackType,
+                payload:        $payload,
+                organisationId: (int) $organisation->id,
+                sourceIp:       $request->ip() ?? '',
+            );
+        } else {
+            ProcessMpesaWebhook::dispatch(
+                callbackType:   $callbackType,
+                payload:        $payload,
+                organisationId: (int) $organisation->id,
+                sourceIp:       $request->ip() ?? '',
+            );
+        }
 
         // Daraja requires this exact response shape
         return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
