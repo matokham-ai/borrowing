@@ -1,0 +1,17 @@
+@extends('layouts.app')
+
+@section('title', 'Send M-Pesa STK Push')
+
+@push('styles')
+<style>
+.stk-form-page{max-width:880px;margin:0 auto}.stk-form-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px}.stk-form-head h1{margin:7px 0 4px;color:#0d1320;font-size:25px;letter-spacing:-.03em}.stk-form-head p{margin:0;color:#98a2b3;font-size:11px}.stk-form-card{padding:26px}.stk-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.stk-form-field{display:grid;gap:7px}.stk-form-field.full{grid-column:1/-1}.stk-form-field label{color:#344054;font-size:11px;font-weight:700}.stk-form-field small{color:#98a2b3;font-size:10px}.stk-form-control{height:40px;width:100%;border:1px solid var(--line);border-radius:9px;background:#fff;color:#344054;padding:0 12px;font-size:12px}.stk-form-control:focus{outline:0;border-color:var(--primary);box-shadow:0 0 0 3px rgba(91,92,226,.1)}.stk-form-actions{display:flex;gap:8px;margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}.stk-form-btn{height:38px;border:1px solid var(--line);border-radius:9px;padding:0 15px;background:#fff;color:#475467;font-size:11px;font-weight:650;text-decoration:none;cursor:pointer}.stk-form-btn.primary{border-color:var(--primary);background:var(--primary);color:#fff}.stk-form-error{margin-bottom:16px;padding:11px 13px;border:1px solid #fecdca;border-radius:9px;background:#fff5f4;color:#b42318;font-size:11px}@media(max-width:650px){.stk-form-grid{grid-template-columns:1fr}.stk-form-field.full{grid-column:auto}.stk-form-head{display:block}}
+</style>
+@endpush
+
+@section('content')
+<div class="stk-form-page">
+    <header class="stk-form-head"><div><div class="stk-eyebrow">Finance / M-Pesa STK</div><h1>Send an STK Push</h1><p>Prompt a borrower to complete a secure loan repayment on their phone.</p></div><a class="stk-form-btn" href="{{ route('mpesa.stk.index') }}"><i class="bi bi-arrow-left"></i> Back to STK</a></header>
+    @if($errors->any())<div class="stk-form-error">{{ $errors->first() }}</div>@endif
+    <section class="panel stk-form-card"><form method="POST" action="{{ route('mpesa.stk.store') }}">@csrf<div class="stk-form-grid"><div class="stk-form-field full"><label for="loan_id">Borrower and loan</label><select class="stk-form-control" id="loan_id" name="loan_id" required><option value="">Select an active loan</option>@foreach($loans as $loan)<option value="{{ $loan->id }}" @selected(old('loan_id') == $loan->id)>#{{ str_pad($loan->id, 7, '0', STR_PAD_LEFT) }} · {{ $loan->borrower?->user?->name ?? 'Borrower' }} · {{ $loan->loanProduct?->name ?? 'Loan' }}</option>@endforeach</select><small>Only active and disbursed loans with a borrower phone number can receive a prompt.</small></div><div class="stk-form-field"><label for="amount">Amount (KSh)</label><input class="stk-form-control" id="amount" name="amount" type="number" min="1" step="0.01" value="{{ old('amount') }}" required></div><div class="stk-form-field"><label for="description">Prompt description</label><input class="stk-form-control" id="description" name="description" type="text" maxlength="13" value="{{ old('description', 'Loan repayment') }}"><small>Maximum 13 characters for Daraja.</small></div></div><div class="stk-form-actions"><button class="stk-form-btn primary" type="submit"><i class="bi bi-phone-vibrate"></i> Send STK Push</button><a class="stk-form-btn" href="{{ route('mpesa.stk.index') }}">Cancel</a></div></form></section>
+</div>
+@endsection
