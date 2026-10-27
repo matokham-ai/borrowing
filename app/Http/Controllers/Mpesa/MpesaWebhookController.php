@@ -25,19 +25,19 @@ use Illuminate\Support\Facades\Log;
  * All heavy processing and idempotency happen inside the job.
  *
  * URL structure:
- *   POST /api/mpesa/{orgSlug}/c2b/confirmation
- *   POST /api/mpesa/{orgSlug}/c2b/validation
- *   POST /api/mpesa/{orgSlug}/stk/callback
- *   POST /api/mpesa/{orgSlug}/b2c/result
- *   POST /api/mpesa/{orgSlug}/b2c/timeout
- *   POST /api/mpesa/{orgSlug}/reversal/result
+ *   POST /api/pay/{orgSlug}/c2b/confirmation
+ *   POST /api/pay/{orgSlug}/c2b/validation
+ *   POST /api/pay/{orgSlug}/stk/callback
+ *   POST /api/pay/{orgSlug}/b2c/result
+ *   POST /api/pay/{orgSlug}/b2c/timeout
+ *   POST /api/pay/{orgSlug}/reversal/result
  */
 class MpesaWebhookController extends Controller
 {
     // ── C2B ───────────────────────────────────────────────────────────────
 
     /**
-     * POST /api/mpesa/{orgSlug}/c2b/confirmation
+     * POST /api/pay/{orgSlug}/c2b/confirmation
      *
      * Called by Daraja when a customer completes a PayBill / Till payment.
      * This is the primary inbound repayment entry point.
@@ -48,7 +48,7 @@ class MpesaWebhookController extends Controller
     }
 
     /**
-     * POST /api/mpesa/{orgSlug}/c2b/validation
+     * POST /api/pay/{orgSlug}/c2b/validation
      *
      * Called by Daraja before a payment is processed (optional hook).
      * Returning ResultCode 0 accepts the payment; non-zero rejects it.
@@ -61,7 +61,7 @@ class MpesaWebhookController extends Controller
     // ── STK Push ──────────────────────────────────────────────────────────
 
     /**
-     * POST /api/mpesa/{orgSlug}/stk/callback
+     * POST /api/pay/{orgSlug}/stk/callback
      *
      * Result of an STK Push prompt — success or failure.
      */
@@ -73,7 +73,7 @@ class MpesaWebhookController extends Controller
     // ── B2C ───────────────────────────────────────────────────────────────
 
     /**
-     * POST /api/mpesa/{orgSlug}/b2c/result
+     * POST /api/pay/{orgSlug}/b2c/result
      *
      * B2C disbursement result — success or failure.
      */
@@ -83,7 +83,7 @@ class MpesaWebhookController extends Controller
     }
 
     /**
-     * POST /api/mpesa/{orgSlug}/b2c/timeout
+     * POST /api/pay/{orgSlug}/b2c/timeout
      *
      * Called by Daraja when a B2C request times out without a result.
      * Treated as a failure — the disbursement service will mark it failed.
@@ -97,7 +97,7 @@ class MpesaWebhookController extends Controller
     // ── Reversals ─────────────────────────────────────────────────────────
 
     /**
-     * POST /api/mpesa/{orgSlug}/reversal/result
+     * POST /api/pay/{orgSlug}/reversal/result
      *
      * M-Pesa-initiated reversal of a previous transaction.
      */

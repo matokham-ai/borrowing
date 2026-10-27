@@ -22,7 +22,7 @@ use Illuminate\Support\Str;
  *  2. POST to Daraja STK Push endpoint.
  *  3. Persist an MpesaTransaction record in 'submitted' status.
  *  4. The result arrives asynchronously via the STK callback webhook
- *     (POST /api/mpesa/{orgSlug}/stk/callback) which is handled by
+ *     (POST /api/pay/{orgSlug}/stk/callback) which is handled by
  *     MpesaCallbackService::handleStkCallback() → ProcessMpesaTransaction.
  *
  * Credentials
@@ -82,7 +82,7 @@ class MpesaStkService
         // Resolve callback URL from config or derive from APP_URL + org slug
         $orgSlug     = DB::table('organisations')->where('id', $orgId)->value('slug') ?? (string) $orgId;
         $callbackUrl = config('services.mpesa.stk_callback_url')
-            ?? url("/api/mpesa/{$orgSlug}/stk/callback");
+            ?? route('mpesa.stk.callback', ['orgSlug' => $orgSlug], true);
 
         // ── Idempotency: reuse if a 'submitted' or 'processing' STK exists
         //    for this loan within the last 5 minutes ─────────────────────
